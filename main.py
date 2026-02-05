@@ -71,6 +71,16 @@ def handle_link(message):
             try:
                 file_data = json_data.get("list", [{}])[0]
                 download_url = file_data.get("download_link")
+
+stream_url = (
+    file_data.get("stream_url")
+    or file_data.get("stream_link")
+)
+
+# If fast_stream_url available, pick 720p
+if not stream_url:
+    fast_stream = file_data.get("fast_stream_url", {})
+    stream_url = fast_stream.get("720p") or fast_stream.get("480p")
             except (IndexError, AttributeError):
                 download_url = None
 
@@ -78,20 +88,24 @@ def handle_link(message):
                 markup = InlineKeyboardMarkup()
 
                 # Watch online (same link used for streaming)
-                markup.add(
-                    InlineKeyboardButton(
-                        "▶️ Watch Online",
-                        url=download_url
-                    )
-                )
+                markup = InlineKeyboardMarkup()
 
-                # Download button
-                markup.add(
-                    InlineKeyboardButton(
-                        "⬇️ Download",
-                        url=download_url
-                    )
-                )
+# Watch button (real stream)
+if stream_url:
+    markup.add(
+        InlineKeyboardButton(
+            "▶️ Watch Online",
+            url=stream_url
+        )
+    )
+
+# Download button
+markup.add(
+    InlineKeyboardButton(
+        "⬇️ Download",
+        url=download_url
+    )
+)
 
                 bot.edit_message_text(
                     chat_id=message.chat.id,
