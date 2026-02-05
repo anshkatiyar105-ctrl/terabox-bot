@@ -7,9 +7,8 @@ import telebot
 # --- CONFIG ---
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 XAPIVERSE_KEY = os.getenv("XAPIVERSE_KEY")
-SHORTENER_API = os.getenv("SHORTENER_API")
 
-CHANNEL_USERNAME = "@terabox_directlinks"  # change this
+CHANNEL_USERNAME = "@terabox_directlinks"  # apna channel username daalo
 
 # --- LOGGING ---
 logging.basicConfig(level=logging.INFO)
@@ -24,20 +23,6 @@ def is_user_joined(user_id):
         return member.status in ["member", "administrator", "creator"]
     except:
         return False
-
-# --- LINK SHORTENER FUNCTION ---
-def shorten_link(url):
-    try:
-        api = "https://shrinkme.io/api"
-        params = {
-            "api": SHORTENER_API,
-            "url": url
-        }
-        r = requests.get(api, params=params, timeout=15)
-        data = r.json()
-        return data.get("shortenedUrl", url)
-    except:
-        return url  # fallback to original
 
 # --- START COMMAND ---
 @bot.message_handler(commands=['start'])
@@ -54,6 +39,7 @@ def start(message):
 # --- MAIN LINK HANDLER ---
 @bot.message_handler(func=lambda message: True)
 def handle_link(message):
+    # Force subscribe check
     if not is_user_joined(message.from_user.id):
         bot.reply_to(
             message,
@@ -82,12 +68,10 @@ def handle_link(message):
             download_url = json_data.get("list", [{}])[0].get("download_link")
 
             if download_url:
-                short_url = shorten_link(download_url)
-
                 bot.edit_message_text(
                     chat_id=message.chat.id,
                     message_id=wait_msg.message_id,
-                    text=f"✅ Download Link:\n{short_url}",
+                    text=f"✅ Download Link:\n{download_url}",
                     disable_web_page_preview=True
                 )
             else:
