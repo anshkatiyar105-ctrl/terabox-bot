@@ -67,43 +67,31 @@ def handle_link(message):
 
         if response.status_code == 200:
             json_data = response.json()
-            file_data = json_data.get("list", [{}])[0]
 
-          try:
-    file_info = json_data.get("list", [{}])[0]
-    download_url = file_info.get("download_link")
-except (IndexError, AttributeError):
-    download_url = None
+            try:
+                file_data = json_data.get("list", [{}])[0]
+                download_url = file_data.get("download_link")
+            except (IndexError, AttributeError):
+                download_url = None
 
-if download_url:
-    markup = InlineKeyboardMarkup()
+            if download_url:
+                markup = InlineKeyboardMarkup()
 
-    markup.add(
-        InlineKeyboardButton(
-            "▶️ Watch Online",
-            url=download_url
-        )
-    )
+                # Watch online (same link used for streaming)
+                markup.add(
+                    InlineKeyboardButton(
+                        "▶️ Watch Online",
+                        url=download_url
+                    )
+                )
 
-    markup.add(
-        InlineKeyboardButton(
-            "⬇️ Download",
-            url=download_url
-        )
-    )
-
-    bot.edit_message_text(
-        chat_id=message.chat.id,
-        message_id=wait_msg.message_id,
-        text="✅ Your links are ready:",
-        reply_markup=markup
-    )
-else:
-    bot.edit_message_text(
-        chat_id=message.chat.id,
-        message_id=wait_msg.message_id,
-        text="❌ Download link not found."
-    )
+                # Download button
+                markup.add(
+                    InlineKeyboardButton(
+                        "⬇️ Download",
+                        url=download_url
+                    )
+                )
 
                 bot.edit_message_text(
                     chat_id=message.chat.id,
@@ -131,6 +119,7 @@ else:
             message_id=wait_msg.message_id,
             text="⚠️ Error processing link."
         )
+
 # --- SAFE STARTUP ---
 def run():
     time.sleep(5)
