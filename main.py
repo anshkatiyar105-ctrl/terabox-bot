@@ -42,6 +42,7 @@ def handle(message):
             bot.reply_to(message, "Could not extract video.")
 
     except:
+        
         bot.reply_to(message, "Error processing the link.")
 
 print("Bot is running...")
