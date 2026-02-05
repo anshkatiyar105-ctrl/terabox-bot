@@ -44,13 +44,17 @@ def handle_message(message):
     try:
         # xAPIverse API endpoint
         api_url = "https://xapiverse.com/api/terabox"
-        params = {
-            "url": text,
-            "key": XAPIVERSE_KEY
-        }
-        
-        response = requests.get(api_url, params=params, timeout=30)
-        data = response.json()
+        headers = {
+    "Content-Type": "application/json",
+    "xAPIverse-Key": XAPIVERSE_KEY
+}
+
+payload = {
+    "url": text
+}
+
+response = requests.post(api_url, json=payload, headers=headers, timeout=30)
+data = response.json()
 
         if response.status_code == 200 and data:
             # Format the response based on typical xAPIverse output
