@@ -70,14 +70,41 @@ def handle_link(message):
             file_data = json_data.get("list", [{}])[0]
 
             download_url = file_data.get("download_link")
-            fast_stream = file_data.get("fast_stream_url", {})
+
+# Get m3u8 stream
+fast_stream = file_data.get("fast_stream_url", {})
 stream_url = fast_stream.get("720p") or fast_stream.get("480p")
 
+# Convert to player link
 if stream_url:
     watch_url = f"https://teraplayer979.github.io/stream-player/?video={stream_url}"
 else:
     watch_url = None
 
+if download_url:
+    markup = InlineKeyboardMarkup()
+
+    if watch_url:
+        markup.add(
+            InlineKeyboardButton(
+                "▶️ Watch Online",
+                url=watch_url
+            )
+        )
+
+    markup.add(
+        InlineKeyboardButton(
+            "⬇️ Download",
+            url=download_url
+        )
+    )
+
+    bot.edit_message_text(
+        chat_id=message.chat.id,
+        message_id=wait_msg.message_id,
+        text="✅ Your links are ready:",
+        reply_markup=markup
+    )
             # Fallback: if no stream_url, use download link for watch
             if not watch_url:
                 watch_url = download_url
