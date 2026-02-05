@@ -1,19 +1,10 @@
 import telebot
-import requests
+from terabox_downloader import TeraboxDownloader
 
 TOKEN = "8469056505:AAHykdxXeNfLYOEQ85ETsPXJv06ZoP6Q0fs"
 bot = telebot.TeleBot(TOKEN)
 
-def get_cdn_link(url):
-    try:
-        api = f"https://terabox-downloader-api.vercel.app/api?url={url}"
-        res = requests.get(api, timeout=15).json()
-
-        if "download_url" in res:
-            return res["download_url"]
-        return None
-    except:
-        return None
+downloader = TeraboxDownloader()
 
 @bot.message_handler(commands=['start'])
 def start(message):
@@ -29,13 +20,14 @@ def handle(message):
 
     bot.reply_to(message, "Extracting video...")
 
-    cdn_link = get_cdn_link(url)
+    try:
+        data = downloader.get_video_info(url)
+        video_url = data["download_link"]
 
-    if cdn_link:
         markup = telebot.types.InlineKeyboardMarkup()
         markup.add(
-            telebot.types.InlineKeyboardButton("▶ Play Video", url=cdn_link),
-            telebot.types.InlineKeyboardButton("⬇ Download Video", url=cdn_link)
+            telebot.types.InlineKeyboardButton("▶ Play Video", url=video_url),
+            telebot.types.InlineKeyboardButton("⬇ Download Video", url=video_url)
         )
 
         bot.send_message(
@@ -43,8 +35,9 @@ def handle(message):
             "Your video is ready:",
             reply_markup=markup
         )
-    else:
-        bot.reply_to(message, "Failed to extract video. Try another link.")
+
+    except Exception as e:
+        bot.reply_to(message, "Failed to extract video.")
 
 print("Bot is running...")
 bot.infinity_polling()
