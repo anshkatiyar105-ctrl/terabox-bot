@@ -1,14 +1,20 @@
 import telebot
-from terabox_downloader import TeraboxDownloader
+import requests
 
 TOKEN = "8469056505:AAHykdxXeNfLYOEQ85ETsPXJv06ZoP6Q0fs"
 bot = telebot.TeleBot(TOKEN)
 
-downloader = TeraboxDownloader()
+def extract_video(url):
+    try:
+        api = f"https://terabox-api-five.vercel.app/api?url={url}"
+        res = requests.get(api, timeout=15).json()
+        return res.get("download_url")
+    except:
+        return None
 
 @bot.message_handler(commands=['start'])
 def start(message):
-    bot.reply_to(message, "Send your Terabox link to get direct video stream.")
+    bot.reply_to(message, "Send your Terabox link.")
 
 @bot.message_handler(func=lambda m: True)
 def handle(message):
@@ -20,10 +26,9 @@ def handle(message):
 
     bot.reply_to(message, "Extracting video...")
 
-    try:
-        data = downloader.get_video_info(url)
-        video_url = data["download_link"]
+    video_url = extract_video(url)
 
+    if video_url:
         markup = telebot.types.InlineKeyboardMarkup()
         markup.add(
             telebot.types.InlineKeyboardButton("▶ Play Video", url=video_url),
@@ -35,8 +40,7 @@ def handle(message):
             "Your video is ready:",
             reply_markup=markup
         )
-
-    except Exception as e:
+    else:
         bot.reply_to(message, "Failed to extract video.")
 
 print("Bot is running...")
