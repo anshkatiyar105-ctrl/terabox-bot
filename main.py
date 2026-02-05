@@ -12,6 +12,10 @@ XAPIVERSE_KEY = os.getenv("XAPIVERSE_KEY")
 
 PLAYER_BASE = "https://teraplayer979.github.io/stream-player/"
 
+# Force subscribe settings
+CHANNEL_USERNAME = "@terabox_directlinks"
+CHANNEL_LINK = "https://t.me/terabox_directlinks"
+
 # --------------- LOGGING ----------------
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -22,14 +26,48 @@ if not BOT_TOKEN or not XAPIVERSE_KEY:
 
 bot = telebot.TeleBot(BOT_TOKEN)
 
+# ----------- FORCE SUBSCRIBE FUNCTIONS ----------
+def is_user_joined(user_id):
+    try:
+        member = bot.get_chat_member(CHANNEL_USERNAME, user_id)
+        return member.status in ["member", "administrator", "creator"]
+    except:
+        return False
+
+def join_markup():
+    markup = types.InlineKeyboardMarkup()
+    markup.add(types.InlineKeyboardButton("📢 Join Channel", url=CHANNEL_LINK))
+    return markup
+
 # --------------- START ------------------
 @bot.message_handler(commands=["start", "help"])
 def start(message):
+    user_id = message.from_user.id
+
+    if not is_user_joined(user_id):
+        bot.reply_to(
+            message,
+            "🚫 Join our channel first to use this bot.",
+            reply_markup=join_markup()
+        )
+        return
+
     bot.reply_to(message, "Send a Terabox link to stream or download.")
 
 # --------------- MAIN HANDLER -----------
 @bot.message_handler(func=lambda message: True)
 def handle_link(message):
+    user_id = message.from_user.id
+
+    # Force subscribe check
+    if not is_user_joined(user_id):
+        bot.reply_to(
+            message,
+            "🚫 Join our channel first to use this bot.",
+            reply_markup=join_markup()
+        )
+        return
+
     url_text = message.text.strip()
 
     if "terabox" not in url_text and "1024tera" not in url_text:
@@ -77,8 +115,8 @@ def handle_link(message):
             fast_streams.get("720p")
             or fast_streams.get("480p")
             or fast_streams.get("360p")
-            or file_info.get("stream_url")  # fallback
-            or file_info.get("download_link")  # last fallback
+            or file_info.get("stream_url")
+            or file_info.get("download_link")
         )
 
         download_url = file_info.get("download_link")
@@ -106,7 +144,7 @@ def handle_link(message):
         bot.edit_message_text(
             chat_id=message.chat.id,
             message_id=status_msg.message_id,
-            text=f"✅ Ready!\n\n📦 {file_name}",
+            text=f"✅ Ready!\n\n📦 {file_name}\n\n📢 Join: {CHANNEL_USERNAME}",
             reply_markup=markup
         )
 
