@@ -3,6 +3,7 @@ import time
 import logging
 import requests
 import telebot
+from telebot import apihelper
 
 # --- 1. CONFIGURATION & LOGGING ---
 logging.basicConfig(
@@ -21,75 +22,63 @@ if not BOT_TOKEN or not XAPIVERSE_KEY:
 
 bot = telebot.TeleBot(BOT_TOKEN)
 
-# --- 2. HELPER FUNCTIONS ---
+# --- 2. DATA EXTRACTION LOGIC ---
 
-def extract_download_data(data):
+def safe_extract(data):
+    """
+    Defensive parser for xAPIverse JSON. 
+    Protects against MESSAGE_TOO_LONG and attribute errors.
+    """
     try:
-        # Main data block
-        info = data.get("data", data)
-
-        # Some APIs return list of files
-        if isinstance(info, list) and len(info) > 0:
-            info = info[0]
-
-        # Try different possible structures
-        file_name = (
-            info.get("file_name")
-            or info.get("filename")
-            or info.get("name")
-            or "Unknown File"
-        )
-
-        size = (
-            info.get("size")
-            or info.get("filesize")
-            or info.get("file_size")
-            or "Unknown Size"
-        )
-
-        # Try all possible download link fields
-        dl_link = (
-            info.get("direct_link")
-            or info.get("download_link")
-            or info.get("url")
-        )
-
-        # Check nested download object
+        # Step 1: Locate the core info block
+        # Some APIs wrap in 'data', others in 'result', some are flat
+        info = data.get("data", {}) if isinstance(data.get("data"), dict) else data
+        
+        # Step 2: Extraction with multiple fallback keys
+        name = info.get("file_name") or info.get("filename") or info.get("title") or "Unknown File"
+        size = info.get("size") or info.get("filesize") or "Unknown Size"
+        
+        # Look for download link in various common nested structures
+        dl_link = info.get("direct_link") or info.get("download_link") or info.get("url")
+        if not dl_link and isinstance(info.get("download"), dict):
+            dl_link = info.get("download", {}).get("url")
+            
         if not dl_link:
-            download = info.get("download", {})
-            if isinstance(download, dict):
-                dl_link = download.get("url") or download.get("link")
+            logger.warning(f"Link missing in JSON structure: {data}")
+            return "❌ Direct download link not found in the API response."
 
-        # Final fallback
-        if not dl_link:
-            return "❌ Download link not found in API response."
-
+        # Step 3: Length Protection (Telegram limit is 4096)
+        # We truncate names if they are absurdly long
+        if len(name) > 100: name = name[:97] + "..."
+            
         message = (
-            f"📦 File: {file_name}\n"
-            f"⚖️ Size: {size}\n\n"
-            f"🚀 Direct Download Link:\n{dl_link}"
+            f"📦 **File:** `{name}`\n"
+            f"⚖️ **Size:** {size}\n\n"
+            f"🚀 **Direct Link:**\n`{dl_link}`"
         )
-        return message
+        
+        # Final safety check on total length
+        return message[:4000]
 
     except Exception as e:
-        logger.error(f"Parsing error: {e}")
-        return "⚠️ Could not parse file data."
+        logger.error(f"Safe Parse Error: {e} | Data received: {data}")
+        return "⚠️ Error parsing file data. The structure might have changed."
 
 # --- 3. BOT HANDLERS ---
 
 @bot.message_handler(commands=['start', 'help'])
 def send_welcome(message):
-    bot.reply_to(message, "🚀 **Terabox Downloader**\n\nSend me a Terabox link to get the direct download data.")
+    bot.reply_to(message, "✅ **Terabox Downloader Online**\nSend me a Terabox link to begin.")
 
 @bot.message_handler(func=lambda message: True)
-def handle_terabox_link(message):
-    url = message.text.strip()
+def handle_link(message):
+    text = message.text.strip()
     
-    if "terabox" not in url and "1024tera" not in url:
-        bot.reply_to(message, "❌ Please send a valid Terabox link.")
-        return
+    # Simple Domain Check
+    if "terabox" not in text and "1024tera" not in text:
+        return # Ignore non-terabox messages
 
-    status_msg = bot.reply_to(message, "⏳ Fetching secure link from xAPIverse...")
+    status_msg = bot.reply_to(message, "⏳ *Generating direct link...*", parse_mode="Markdown")
 
     try:
         api_url = "https://xapiverse.com/api/terabox"
@@ -97,56 +86,61 @@ def handle_terabox_link(message):
             "Content-Type": "application/json",
             "xAPIverse-Key": XAPIVERSE_KEY
         }
-        payload = {"url": url}
+        payload = {"url": text}
 
-        response = requests.post(api_url, headers=headers, json=payload, timeout=40)
+        response = requests.post(api_url, headers=headers, json=payload, timeout=45)
         
         if response.status_code == 200:
-            full_data = response.json()
-            print(json_data)
-            # Extract only the necessary info to avoid MESSAGE_TOO_LONG error
-            clean_message = extract_download_data(full_data)
+            json_data = response.json()
             
-            bot.edit_message_text(
-                chat_id=message.chat.id,
-                message_id=status_msg.message_id,
-                text=clean_message,
-                parse_mode="Markdown"
-            )
+            # If API reports internal error
+            if json_data.get("status") == "error":
+                response_text = f"❌ **API Error:** {json_data.get('message', 'Access Denied')}"
+            else:
+                response_text = safe_extract(json_data)
         else:
-            bot.edit_message_text(
-                chat_id=message.chat.id,
-                message_id=status_msg.message_id,
-                text=f"❌ **API Error ({response.status_code})**"
-            )
+            logger.error(f"API HTTP Error: {response.status_code}")
+            response_text = f"❌ **Server Error:** ({response.status_code})"
 
-    except Exception as e:
-        logger.error(f"Request Error: {e}")
         bot.edit_message_text(
             chat_id=message.chat.id,
             message_id=status_msg.message_id,
-            text="⚠️ An error occurred while processing the link."
+            text=response_text,
+            parse_mode="Markdown",
+            disable_web_page_preview=True
         )
 
-# --- 4. PRODUCTION POLLING LOOP ---
+    except Exception as e:
+        logger.error(f"Handler Crash Prevented: {e}")
+        bot.edit_message_text(
+            chat_id=message.chat.id,
+            message_id=status_msg.message_id,
+            text="⚠️ Service temporarily unavailable."
+        )
 
-def run_bot():
-    logger.info("Starting bot...")
+# --- 4. PRODUCTION ENGINE ---
+
+def start_bot():
+    """
+    Clears webhooks to prevent 409 Conflict and enters a restart loop.
+    """
+    logger.info("Bot initializing...")
     
-    # Clean conflict: Remove webhook and wait
+    # 1. Clean Conflict Start
     try:
         bot.remove_webhook()
-        time.sleep(1)
+        time.sleep(2) # Buffer for Railway environment to settle
     except Exception as e:
-        logger.warning(f"Webhook removal failed: {e}")
+        logger.warning(f"Initial webhook clear failed: {e}")
 
+    # 2. Infinite Polling Loop
     while True:
         try:
-            logger.info("Bot is now polling.")
-            bot.polling(none_stop=True, interval=1, timeout=20)
+            logger.info("Polling started...")
+            bot.infinity_polling(timeout=20, long_polling_timeout=10)
         except Exception as e:
-            logger.error(f"Polling error: {e}")
-            time.sleep(5) # Cooldown before restart
+            logger.error(f"Polling crashed: {e}")
+            time.sleep(10) # Cooldown before auto-restart
 
 if __name__ == "__main__":
-    run_bot()
+    start_bot()
