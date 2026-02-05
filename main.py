@@ -4,72 +4,68 @@ import logging
 import requests
 import telebot
 
-# Logging
+# --- CONFIG ---
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+XAPIVERSE_KEY = os.getenv("XAPIVERSE_KEY")
+SHORTENER_API = os.getenv("SHORTENER_API")
+
+CHANNEL_USERNAME = "@free_terabox_video_bot"  # change this
+
+# --- LOGGING ---
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-BOT_TOKEN = os.getenv("BOT_TOKEN")
-XAPIVERSE_KEY = os.getenv("XAPIVERSE_KEY")
-
-if not BOT_TOKEN or not XAPIVERSE_KEY:
-    logger.error("Missing BOT_TOKEN or XAPIVERSE_KEY")
-    exit(1)
-
 bot = telebot.TeleBot(BOT_TOKEN)
 
-
-def format_size(size_bytes):
+# --- FORCE SUBSCRIBE CHECK ---
+def is_user_joined(user_id):
     try:
-        size_bytes = int(size_bytes)
-        for unit in ['B', 'KB', 'MB', 'GB', 'TB']:
-            if size_bytes < 1024:
-                return f"{size_bytes:.2f} {unit}"
-            size_bytes /= 1024
+        member = bot.get_chat_member(CHANNEL_USERNAME, user_id)
+        return member.status in ["member", "administrator", "creator"]
     except:
-        return "Unknown Size"
+        return False
 
-
-def extract_data(data):
+# --- LINK SHORTENER FUNCTION ---
+def shorten_link(url):
     try:
-        info = data.get("data", {}) if isinstance(data.get("data"), dict) else data
+        api = "https://shrinkme.io/api"
+        params = {
+            "api": SHORTENER_API,
+            "url": url
+        }
+        r = requests.get(api, params=params, timeout=15)
+        data = r.json()
+        return data.get("shortenedUrl", url)
+    except:
+        return url  # fallback to original
 
-        file_name = info.get("file_name") or info.get("filename") or "File"
-        size = format_size(info.get("size") or info.get("filesize") or 0)
-
-        link = (
-            info.get("download_link")
-            or info.get("direct_link")
-            or info.get("dlink")
-            or info.get("url")
-        )
-
-        if not link:
-            return "❌ Download link not found."
-
-        return (
-            f"✅ **Download Ready**\n\n"
-            f"📦 **File:** `{file_name}`\n"
-            f"⚖️ **Size:** {size}\n\n"
-            f"🚀 **Link:**\n`{link}`"
-        )
-
-    except Exception as e:
-        logger.error(f"Parse error: {e}")
-        return "⚠️ Failed to read API response."
-
-
+# --- START COMMAND ---
 @bot.message_handler(commands=['start'])
 def start(message):
+    if not is_user_joined(message.from_user.id):
+        bot.reply_to(
+            message,
+            f"🚫 Please join our channel first:\nhttps://t.me/{CHANNEL_USERNAME.replace('@','')}"
+        )
+        return
+
     bot.reply_to(message, "Send any Terabox link.")
 
-
+# --- MAIN LINK HANDLER ---
 @bot.message_handler(func=lambda message: True)
 def handle_link(message):
+    if not is_user_joined(message.from_user.id):
+        bot.reply_to(
+            message,
+            f"🚫 Please join our channel first:\nhttps://t.me/{CHANNEL_USERNAME.replace('@','')}"
+        )
+        return
+
     url_text = message.text.strip()
     if "terabox" not in url_text and "1024tera" not in url_text:
         return
 
-    wait_msg = bot.reply_to(message, "⏳ Direct link found. Sending now...")
+    wait_msg = bot.reply_to(message, "⏳ Generating download link...")
 
     try:
         api_url = "https://xapiverse.com/api/terabox"
@@ -83,21 +79,22 @@ def handle_link(message):
 
         if response.status_code == 200:
             json_data = response.json()
-
             download_url = json_data.get("list", [{}])[0].get("download_link")
 
             if download_url:
+                short_url = shorten_link(download_url)
+
                 bot.edit_message_text(
                     chat_id=message.chat.id,
                     message_id=wait_msg.message_id,
-                    text=f"✅ Download Link:\n{download_url}",
+                    text=f"✅ Download Link:\n{short_url}",
                     disable_web_page_preview=True
                 )
             else:
                 bot.edit_message_text(
                     chat_id=message.chat.id,
                     message_id=wait_msg.message_id,
-                    text="❌ Download link not found in API response."
+                    text="❌ Download link not found."
                 )
         else:
             bot.edit_message_text(
@@ -107,19 +104,18 @@ def handle_link(message):
             )
 
     except Exception as e:
-        logger.error(f"Request Failure: {e}")
+        logger.error(e)
         bot.edit_message_text(
             chat_id=message.chat.id,
             message_id=wait_msg.message_id,
-            text="⚠️ Service unavailable. Please try again later."
+            text="⚠️ Error processing link."
         )
 
-
+# --- SAFE STARTUP ---
 def run():
+    time.sleep(5)
     bot.remove_webhook()
-    time.sleep(1)
     bot.infinity_polling()
-
 
 if __name__ == "__main__":
     run()
