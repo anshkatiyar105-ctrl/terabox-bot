@@ -9,7 +9,7 @@ BOT_TOKEN = os.getenv("BOT_TOKEN")
 XAPIVERSE_KEY = os.getenv("XAPIVERSE_KEY")
 SHORTENER_API = os.getenv("SHORTENER_API")
 
-CHANNEL_USERNAME = "@free_terabox_video_bot"  # change this
+CHANNEL_USERNAME = "@terabox_directlinks"  # change this
 
 # --- LOGGING ---
 logging.basicConfig(level=logging.INFO)
