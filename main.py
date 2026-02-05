@@ -1,3 +1,4 @@
+import urllib.parse
 import os
 import time
 import logging
@@ -42,36 +43,66 @@ def start(message):
 # --- MAIN LINK HANDLER ---
 @bot.message_handler(func=lambda message: True)
 def handle_link(message):
-
-    # Force subscribe check
-    if not is_user_joined(message.from_user.id):
-        bot.reply_to(
-            message,
-            f"🚫 Please join our channel first:\nhttps://t.me/{CHANNEL_USERNAME.replace('@','')}"
-        )
-        return
-
     url_text = message.text.strip()
     if "terabox" not in url_text and "1024tera" not in url_text:
         return
 
-    wait_msg = bot.reply_to(message, "⏳ Generating links...")
+    wait_msg = bot.reply_to(message, "⏳ Generating your links...")
 
     try:
         api_url = "https://xapiverse.com/api/terabox"
-        headers = {
-            "Content-Type": "application/json",
-            "xAPIverse-Key": XAPIVERSE_KEY
-        }
+        headers = {"Content-Type": "application/json", "xAPIverse-Key": XAPIVERSE_KEY}
         payload = {"url": url_text}
 
         response = requests.post(api_url, headers=headers, json=payload, timeout=60)
-
+        
         if response.status_code == 200:
             json_data = response.json()
-            file_data = json_data.get("list", [{}])[0]
+            
+            file_info = json_data.get("list", [{}])[0]
+            raw_stream_link = file_info.get("stream_url") or file_info.get("download_link")
+            download_link = file_info.get("download_link")
 
-            download_url = file_data.get("download_link")
+            if raw_stream_link:
+                encoded_stream = urllib.parse.quote_plus(raw_stream_link)
+                
+                base_player_url = "https://teraplayer979.github.io/stream-player/"
+                watch_url = f"{base_player_url}?url={encoded_stream}"
+                
+                logger.info(f"DEBUG: Final Player URL -> {watch_url}")
+                
+                markup = InlineKeyboardMarkup()
+                markup.add(InlineKeyboardButton("▶️ Watch Online", url=watch_url))
+                
+                if download_link:
+                    markup.add(InlineKeyboardButton("⬇️ Download", url=download_link))
+
+                bot.edit_message_text(
+                    chat_id=message.chat.id,
+                    message_id=wait_msg.message_id,
+                    text="✅ Links Ready!",
+                    reply_markup=markup
+                )
+            else:
+                bot.edit_message_text(
+                    chat_id=message.chat.id,
+                    message_id=wait_msg.message_id,
+                    text="❌ Stream link not found."
+                )
+                
+        else:
+            bot.edit_message_text(
+                chat_id=message.chat.id,
+                message_id=wait_msg.message_id,
+                text=f"❌ API Error: {response.status_code}"
+            )
+
+    except Exception as e:
+        logger.error(f"Error in handle_link: {e}")
+        bot.edit_message_text(
+            chat_id=message.chat.id,
+            message_id=wait_msg.message_id,
+            text="⚠️ Something went wrong.")
 
             # Stream extraction
             stream_url = (
