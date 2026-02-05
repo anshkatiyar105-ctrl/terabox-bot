@@ -1,47 +1,52 @@
 import telebot
 import requests
+import os
 
-TOKEN = "8469056505:AAHykdxXeNfLYOEQ85ETsPXJv06ZoP6Q0fs"
-bot = telebot.TeleBot(TOKEN)
+BOT_TOKEN = os.getenv("8469056505:AAHykdxXeNfLYOEQ85ETsPXJv06ZoP6Q0fs")
+API_KEY = os.getenv("sk_8c0eeebef5d2e808af9e554ef1f6b908")
 
-def extract_video(url):
-    try:
-        api = f"https://terabox-api-five.vercel.app/api?url={url}"
-        res = requests.get(api, timeout=15).json()
-        return res.get("download_url")
-    except:
-        return None
+bot = telebot.TeleBot(BOT_TOKEN)
 
 @bot.message_handler(commands=['start'])
 def start(message):
-    bot.reply_to(message, "Send your Terabox link.")
+    bot.reply_to(message, "Send your TeraBox link and I’ll fetch the video.")
 
-@bot.message_handler(func=lambda m: True)
-def handle(message):
-    url = message.text.strip()
+@bot.message_handler(func=lambda message: True)
+def handle_link(message):
+    link = message.text.strip()
 
-    if "terabox" not in url.lower():
-        bot.reply_to(message, "Please send a valid Terabox link.")
+    if "terabox" not in link:
+        bot.reply_to(message, "Please send a valid TeraBox link.")
         return
 
-    bot.reply_to(message, "Extracting video...")
+    try:
+        url = "https://xapiverse.com/api/terabox"
+        headers = {
+            "Content-Type": "application/json",
+            "xAPIverse-Key": API_KEY
+        }
+        data = {
+            "url": link
+        }
 
-    video_url = extract_video(url)
+        response = requests.post(url, json=data, headers=headers)
+        result = response.json()
 
-    if video_url:
-        markup = telebot.types.InlineKeyboardMarkup()
-        markup.add(
-            telebot.types.InlineKeyboardButton("▶ Play Video", url=video_url),
-            telebot.types.InlineKeyboardButton("⬇ Download Video", url=video_url)
-        )
+        if result.get("status") == "success":
+            file = result["list"][0]
+            download_link = file["download_link"]
+            name = file["name"]
+            size = file["size_formatted"]
 
-        bot.send_message(
-            message.chat.id,
-            "Your video is ready:",
-            reply_markup=markup
-        )
-    else:
-        bot.reply_to(message, "Failed to extract video.")
+            bot.reply_to(
+                message,
+                f"🎬 {name}\n📦 Size: {size}\n\n⬇ Download:\n{download_link}"
+            )
+        else:
+            bot.reply_to(message, "Failed to fetch video.")
 
-print("Bot is running...")
+    except:
+        bot.reply_to(message, "Error processing link.")
+
+print("Bot running...")
 bot.infinity_polling()
