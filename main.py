@@ -60,8 +60,7 @@ def handle_terabox(message):
 
             if stream_link:
                 # Encode for your player
-                encoded = quote_plus(stream_link)
-                player_url = f"https://teraplayer979.github.io/stream-player/?url={encoded}"
+                player_url = f"https://teraplayer979.github.io/stream-player/?url={stream_link}"
 
                 markup = types.InlineKeyboardMarkup()
                 markup.add(types.InlineKeyboardButton("▶️ Watch Online", url=player_url))
