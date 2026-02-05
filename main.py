@@ -9,44 +9,38 @@ bot = telebot.TeleBot(BOT_TOKEN)
 
 @bot.message_handler(commands=['start'])
 def start(message):
-    bot.reply_to(message, "Send your TeraBox link and I’ll fetch the video.")
+    bot.reply_to(message, "Send me a TeraBox link and I’ll fetch the video.")
 
 @bot.message_handler(func=lambda message: True)
 def handle_link(message):
-    link = message.text.strip()
+    url = message.text.strip()
 
-    if "terabox" not in link:
-        bot.reply_to(message, "Please send a valid TeraBox link.")
-        return
+    api_url = "https://xapiverse.com/api/terabox"
+    headers = {
+        "Content-Type": "application/json",
+        "xAPIVerse-Key": API_KEY
+    }
+    payload = {
+        "url": url
+    }
 
     try:
-        url = "https://xapiverse.com/api/terabox"
-        headers = {
-            "Content-Type": "application/json",
-            "xAPIverse-Key": API_KEY
-        }
-        data = {
-            "url": link
-        }
+        res = requests.post(api_url, json=payload, headers=headers)
+        data = res.json()
 
-        response = requests.post(url, json=data, headers=headers)
-        result = response.json()
-
-        if result.get("status") == "success":
-            file = result["list"][0]
+        if data.get("status") == "success":
+            file = data["list"][0]
             download_link = file["download_link"]
             name = file["name"]
             size = file["size_formatted"]
 
-            bot.reply_to(
-                message,
-                f"🎬 {name}\n📦 Size: {size}\n\n⬇ Download:\n{download_link}"
-            )
+            reply = f"📁 {name}\n📦 Size: {size}\n\n🔗 Download:\n{download_link}"
+            bot.reply_to(message, reply)
+
         else:
             bot.reply_to(message, "Failed to fetch video.")
 
-    except:
+    except Exception as e:
         bot.reply_to(message, "Error processing link.")
 
-print("Bot running...")
 bot.infinity_polling()
