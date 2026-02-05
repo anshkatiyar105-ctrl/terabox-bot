@@ -8,39 +8,41 @@ API_KEY = os.getenv("sk_8c0eeebef5d2e808af9e554ef1f6b908")
 bot = telebot.TeleBot(BOT_TOKEN)
 
 @bot.message_handler(commands=['start'])
-def start(message):
-    bot.reply_to(message, "Send me a TeraBox link and I’ll fetch the video.")
+def start(msg):
+    bot.reply_to(msg, "Send me a Terabox link.")
 
-@bot.message_handler(func=lambda message: True)
-def handle_link(message):
-    url = message.text.strip()
+@bot.message_handler(func=lambda m: True)
+def handle_link(msg):
+    url = msg.text
 
-    api_url = "https://xapiverse.com/api/terabox"
-    headers = {
-        "Content-Type": "application/json",
-        "xAPIVerse-Key": API_KEY
-    }
-    payload = {
-        "url": url
-    }
+    bot.reply_to(msg, "Processing your link...")
 
     try:
-        res = requests.post(api_url, json=payload, headers=headers)
-        data = res.json()
+        api_url = "https://xapiverse.com/api/terabox"
+        headers = {
+            "Content-Type": "application/json",
+            "xAPIverse-Key": API_KEY
+        }
+        data = {
+            "url": url
+        }
 
-        if data.get("status") == "success":
-            file = data["list"][0]
+        response = requests.post(api_url, json=data, headers=headers)
+        result = response.json()
+
+        if result.get("list"):
+            file = result["list"][0]
             download_link = file["download_link"]
-            name = file["name"]
-            size = file["size_formatted"]
+            stream_link = file["stream_url"]
 
-            reply = f"📁 {name}\n📦 Size: {size}\n\n🔗 Download:\n{download_link}"
-            bot.reply_to(message, reply)
-
+            bot.send_message(
+                msg.chat.id,
+                f"Download: {download_link}\nStream: {stream_link}"
+            )
         else:
-            bot.reply_to(message, "Failed to fetch video.")
+            bot.send_message(msg.chat.id, "Failed to extract link.")
 
     except Exception as e:
-        bot.reply_to(message, "Error processing link.")
+        bot.send_message(msg.chat.id, "Error processing link.")
 
 bot.infinity_polling()
