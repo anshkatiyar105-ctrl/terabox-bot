@@ -103,6 +103,7 @@ def handle_terabox_link(message):
         
         if response.status_code == 200:
             full_data = response.json()
+            print(json_data)
             # Extract only the necessary info to avoid MESSAGE_TOO_LONG error
             clean_message = extract_download_data(full_data)
             
