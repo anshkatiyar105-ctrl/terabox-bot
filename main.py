@@ -69,32 +69,41 @@ def handle_link(message):
             json_data = response.json()
             file_data = json_data.get("list", [{}])[0]
 
-            download_url = file_data.get("download_link")
-            stream_url = (
-                file_data.get("stream_link")
-                or file_data.get("play_link")
-                or file_data.get("url")
-            )
+          try:
+    file_info = json_data.get("list", [{}])[0]
+    download_url = file_info.get("download_link")
+except (IndexError, AttributeError):
+    download_url = None
 
-            if download_url:
-                markup = InlineKeyboardMarkup()
+if download_url:
+    markup = InlineKeyboardMarkup()
 
-                # Streaming button
-                if stream_url:
-                    markup.add(
-                        InlineKeyboardButton(
-                            "▶️ Watch Online",
-                            url=stream_url
-                        )
-                    )
+    markup.add(
+        InlineKeyboardButton(
+            "▶️ Watch Online",
+            url=download_url
+        )
+    )
 
-                # Download button
-                markup.add(
-                    InlineKeyboardButton(
-                        "⬇️ Download",
-                        url=download_url
-                    )
-                )
+    markup.add(
+        InlineKeyboardButton(
+            "⬇️ Download",
+            url=download_url
+        )
+    )
+
+    bot.edit_message_text(
+        chat_id=message.chat.id,
+        message_id=wait_msg.message_id,
+        text="✅ Your links are ready:",
+        reply_markup=markup
+    )
+else:
+    bot.edit_message_text(
+        chat_id=message.chat.id,
+        message_id=wait_msg.message_id,
+        text="❌ Download link not found."
+    )
 
                 bot.edit_message_text(
                     chat_id=message.chat.id,
