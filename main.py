@@ -39,6 +39,8 @@ def start(message):
 # --- MAIN LINK HANDLER ---
 @bot.message_handler(func=lambda message: True)
 def handle_link(message):
+
+    # Force subscribe check
     if not is_user_joined(message.from_user.id):
         bot.reply_to(
             message,
@@ -47,6 +49,7 @@ def handle_link(message):
         return
 
     url_text = message.text.strip()
+
     if "terabox" not in url_text and "1024tera" not in url_text:
         return
 
@@ -67,41 +70,25 @@ def handle_link(message):
             file_data = json_data.get("list", [{}])[0]
 
             download_url = file_data.get("download_link")
-watch_url = file_data.get("stream_url")
+            watch_url = file_data.get("stream_url")
 
-if download_url or watch_url:
-    markup = InlineKeyboardMarkup()
+            # Fallback: if no stream_url, use download link for watch
+            if not watch_url:
+                watch_url = download_url
 
-    # Watch button
-    if watch_url:
-        markup.add(
-            InlineKeyboardButton(
-                "▶️ Watch Online",
-                url=watch_url
-            )
-        )
+            if download_url:
+                markup = InlineKeyboardMarkup()
 
-    # Download button
-    if download_url:
-        markup.add(
-            InlineKeyboardButton(
-                "⬇️ Download",
-                url=download_url
-            )
-        )
+                # Watch button
+                if watch_url:
+                    markup.add(
+                        InlineKeyboardButton(
+                            "▶️ Watch Online",
+                            url=watch_url
+                        )
+                    )
 
-    bot.edit_message_text(
-        chat_id=message.chat.id,
-        message_id=wait_msg.message_id,
-        text="✅ Your links are ready:",
-        reply_markup=markup
-    )
-else:
-    bot.edit_message_text(
-        chat_id=message.chat.id,
-        message_id=wait_msg.message_id,
-        text="❌ Download link not found."
-    )
+                # Download button
                 markup.add(
                     InlineKeyboardButton(
                         "⬇️ Download",
@@ -121,6 +108,7 @@ else:
                     message_id=wait_msg.message_id,
                     text="❌ Download link not found."
                 )
+
         else:
             bot.edit_message_text(
                 chat_id=message.chat.id,
