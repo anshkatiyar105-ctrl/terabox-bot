@@ -10,7 +10,6 @@ from urllib.parse import quote_plus
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 XAPIVERSE_KEY = os.getenv("XAPIVERSE_KEY")
 
-# Channel & Group settings
 CHANNEL_USERNAME = "@terabox_directlinks"
 CHANNEL_LINK = "https://t.me/terabox_directlinks"
 
@@ -27,7 +26,7 @@ if not BOT_TOKEN or not XAPIVERSE_KEY:
     logger.error("Missing BOT_TOKEN or XAPIVERSE_KEY")
     exit(1)
 
-bot = telebot.TeleBot(BOT_TOKEN, parse_mode="HTML")
+bot = telebot.TeleBot(BOT_TOKEN)
 
 
 # ---------------- HELPERS ----------------
@@ -85,56 +84,41 @@ def get_terabox_data(url):
         return None
 
 
-# ---------------- START ----------------
-@bot.message_handler(commands=["start", "help"])
-def start(message):
-    bot.reply_to(message, "Send a Terabox link to stream or download.")
-
-
-# ---------------- AUTO POST (GROUP) ----------------
+# ---------------- AUTO POST ----------------
 @bot.message_handler(func=lambda m: m.chat.type in ['group', 'supergroup'])
-def auto_post_handler(message):
-    try:
-        if not message.text:
-            return
+def auto_post(message):
+    if not message.text:
+        return
 
-        # Check source group by username
-        if not message.chat.username:
-            return
+    if not message.chat.username:
+        return
 
-        if message.chat.username.lower() != SOURCE_GROUP.replace("@", "").lower():
-            return
+    if message.chat.username.lower() != SOURCE_GROUP.replace("@", "").lower():
+        return
 
-        url = message.text.strip()
+    url = message.text.strip()
+    if "terabox" not in url and "1024tera" not in url:
+        return
 
-        if "terabox" not in url and "1024tera" not in url:
-            return
+    result = get_terabox_data(url)
+    if not result:
+        return
 
-        logger.info("Auto-post triggered")
+    name, watch, download = result
+    encoded_watch = quote_plus(watch)
+    player_url = f"{PLAYER_BASE}?url={encoded_watch}"
 
-        result = get_terabox_data(url)
-        if not result:
-            return
+    markup = types.InlineKeyboardMarkup()
+    markup.add(types.InlineKeyboardButton("▶️ Watch Online", url=player_url))
 
-        name, watch, download = result
+    if download:
+        markup.add(types.InlineKeyboardButton("⬇️ Download", url=download))
 
-        encoded_watch = quote_plus(watch)
-        player_url = f"{PLAYER_BASE}?url={encoded_watch}"
-
-        markup = types.InlineKeyboardMarkup()
-        markup.add(types.InlineKeyboardButton("▶️ Watch Online", url=player_url))
-
-        if download:
-            markup.add(types.InlineKeyboardButton("⬇️ Download", url=download))
-
-        bot.send_message(
-            chat_id=TARGET_CHANNEL,
-            text=f"🎬 {name}\n\n▶️ Watch Online\n⬇️ Download",
-            reply_markup=markup
-        )
-
-    except Exception as e:
-        logger.error(f"Auto-post error: {e}")
+    bot.send_message(
+        TARGET_CHANNEL,
+        f"🎬 {name}\n\n▶️ Watch Online\n⬇️ Download",
+        reply_markup=markup
+    )
 
 
 # ---------------- PRIVATE HANDLER ----------------
@@ -148,29 +132,27 @@ def private_handler(message):
     if not is_user_joined(user_id):
         bot.reply_to(
             message,
-            "🚫 Join our channel first to use this bot.",
+            "🚫 Join our channel first.",
             reply_markup=join_markup()
         )
         return
 
     url = message.text.strip()
-
     if "terabox" not in url and "1024tera" not in url:
         return
 
-    status = bot.reply_to(message, "⏳ Generating links...")
+    status = bot.reply_to(message, "⏳ Generating...")
 
     result = get_terabox_data(url)
     if not result:
         bot.edit_message_text(
-            "❌ Failed to fetch data.",
+            "❌ Failed.",
             message.chat.id,
             status.message_id
         )
         return
 
     name, watch, download = result
-
     encoded_watch = quote_plus(watch)
     player_url = f"{PLAYER_BASE}?url={encoded_watch}"
 
@@ -190,7 +172,7 @@ def private_handler(message):
 
 # ---------------- RUNNER ----------------
 def run_bot():
-    logger.info("Bot starting...")
+    logger.info("Starting bot...")
 
     try:
         bot.remove_webhook()
@@ -200,9 +182,9 @@ def run_bot():
 
     while True:
         try:
-            bot.infinity_polling(timeout=20, long_polling_timeout=10)
+            bot.infinity_polling(skip_pending=True)
         except Exception as e:
-            logger.error(f"Polling crashed: {e}")
+            logger.error(f"Crash: {e}")
             time.sleep(5)
 
 
