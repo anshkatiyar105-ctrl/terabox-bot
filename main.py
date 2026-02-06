@@ -15,13 +15,15 @@ FS_CHANNEL_USERNAME = "@terabox_directlinks"
 FS_CHANNEL_LINK = "https://t.me/terabox_directlinks"
 
 # Auto-Posting Config
-SOURCE_GROUP_USERNAME = "terabox_movies_hub0"  # The group to monitor (without @)
-TARGET_CHANNEL_USERNAME = "@terabox_directlinks" # Where to post results
+# distinct from the link, just the username string for comparison
+SOURCE_GROUP_USERNAME = "terabox_movies_hub0" 
+TARGET_CHANNEL_USERNAME = "@terabox_directlinks" 
 
 PLAYER_BASE = "https://teraplayer979.github.io/stream-player/"
 
 # --------------- LOGGING ----------------
-logging.basicConfig(level=logging.INFO)
+# Set to DEBUG to see all internal details if needed, but INFO is good for general use
+logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 if not BOT_TOKEN or not XAPIVERSE_KEY:
@@ -44,6 +46,7 @@ def fetch_terabox_data(url_text):
         }
         payload = {"url": url_text}
 
+        # logger.info(f"API Request: {payload}") # Uncomment for deep debugging
         response = requests.post(api_url, headers=headers, json=payload, timeout=60)
         
         if response.status_code != 200:
@@ -54,6 +57,7 @@ def fetch_terabox_data(url_text):
         file_list = json_data.get("list", [])
         
         if not file_list:
+            logger.warning("API returned success but 'list' was empty.")
             return None
 
         file_info = file_list[0]
@@ -71,6 +75,7 @@ def fetch_terabox_data(url_text):
         file_name = file_info.get("name", "File Ready")
 
         if not watch_url:
+            logger.warning("No watchable URL found in API response.")
             return None
 
         encoded_watch = quote_plus(watch_url)
@@ -98,39 +103,58 @@ def start(message):
 
 
 # --------------- AUTO-POST HANDLER (GROUP) -----------
-# This triggers ONLY when a message comes from the Source Group
-@bot.message_handler(func=lambda m: m.chat.username and m.chat.username.lower() == SOURCE_GROUP_USERNAME.lower())
-def handle_source_group(message):
-    url_text = message.text.strip()
+# Triggers for ANY text message in a group/supergroup
+@bot.message_handler(func=lambda m: m.chat.type in ['group', 'supergroup'], content_types=['text'])
+def handle_group_message(message):
+    try:
+        # 1. LOGGING: Check what the bot sees
+        chat_username = message.chat.username or ""
+        text_preview = message.text[:20] if message.text else "No Text"
+        logger.info(f"Group Msg Detected | Chat: @{chat_username} | ID: {message.chat.id} | Text: {text_preview}...")
 
-    # Basic filter
-    if "terabox" not in url_text and "1024tera" not in url_text:
-        return
+        # 2. VALIDATION: Check if this is the correct source group
+        # Normalize both to lowercase and remove '@' for comparison
+        clean_chat_username = chat_username.replace("@", "").lower()
+        clean_target_group = SOURCE_GROUP_USERNAME.replace("@", "").lower()
 
-    logger.info(f"Detected link in Source Group: {url_text}")
+        if clean_chat_username != clean_target_group:
+            # Silence this log if you are in many groups to avoid spam
+            logger.info(f"Ignored message from wrong group: {clean_chat_username}")
+            return
 
-    # Process silently (no status messages in group)
-    result = fetch_terabox_data(url_text)
+        # 3. LINK CHECK: Check for keywords
+        url_text = message.text.strip()
+        if "terabox" not in url_text and "1024tera" not in url_text:
+            logger.info("Message ignored: No Terabox keyword found.")
+            return
 
-    if result:
-        text, markup = result
-        try:
-            # Post to Target Channel
-            bot.send_message(
-                chat_id=TARGET_CHANNEL_USERNAME,
-                text=text,
-                reply_markup=markup
-            )
-            logger.info("✅ Successfully auto-posted to channel.")
-        except Exception as e:
-            logger.error(f"Failed to post to channel: {e}")
-    else:
-        logger.warning("Failed to fetch data for auto-post.")
+        logger.info(f"✅ VALID LINK in Source Group! Processing: {url_text}")
+
+        # 4. PROCESSING
+        result = fetch_terabox_data(url_text)
+
+        if result:
+            text, markup = result
+            try:
+                # Post to Target Channel
+                bot.send_message(
+                    chat_id=TARGET_CHANNEL_USERNAME,
+                    text=text,
+                    reply_markup=markup
+                )
+                logger.info(f"🚀 SUCCESS: Auto-posted '{text.splitlines()[2]}' to {TARGET_CHANNEL_USERNAME}")
+            except Exception as e:
+                logger.error(f"❌ FAILED to post to channel: {e}")
+        else:
+            logger.warning("❌ Failed to fetch data from API (Result was None).")
+
+    except Exception as e:
+        logger.error(f"CRITICAL ERROR in Group Handler: {e}")
 
 
 # --------------- PRIVATE HANDLER (USER) -----------
-# This triggers for Private Chats (Includes Force Subscribe)
-@bot.message_handler(func=lambda m: m.chat.type == 'private')
+# Triggers for Private Chats Only
+@bot.message_handler(func=lambda m: m.chat.type == 'private', content_types=['text'])
 def handle_private_link(message):
     url_text = message.text.strip()
 
@@ -141,6 +165,7 @@ def handle_private_link(message):
     user_id = message.from_user.id
     try:
         member_status = bot.get_chat_member(FS_CHANNEL_USERNAME, user_id).status
+        # Valid statuses: creator, administrator, member
         if member_status not in ['creator', 'administrator', 'member']:
             fs_markup = types.InlineKeyboardMarkup()
             btn_join = types.InlineKeyboardButton("📢 Join Channel to Use", url=FS_CHANNEL_LINK)
@@ -175,16 +200,16 @@ def handle_private_link(message):
         bot.edit_message_text(
             chat_id=message.chat.id,
             message_id=status_msg.message_id,
-            text="❌ Failed to generate link or no file found."
+            text=f"❌ Failed to generate link or no file found.\n(API Key: {XAPIVERSE_KEY[:4]}***)"
         )
 
 
 # --------------- SAFE RUNNER ------------
 def run_bot():
-    logger.info("Bot starting...")
+    logger.info("Bot starting... Waiting for messages...")
     try:
         bot.remove_webhook()
-        time.sleep(3)
+        time.sleep(1)
     except:
         pass
 
@@ -193,7 +218,7 @@ def run_bot():
             bot.infinity_polling(timeout=20, long_polling_timeout=10)
         except Exception as e:
             logger.error(f"Polling crashed: {e}")
-            time.sleep(10)
+            time.sleep(5)
 
 if __name__ == "__main__":
     run_bot()
