@@ -3,7 +3,7 @@ import time
 import logging
 import requests
 import telebot
-from telebot import types
+from telebot import types, apihelper
 from urllib.parse import quote_plus
 
 # ---------------- CONFIG ----------------
@@ -22,7 +22,7 @@ TARGET_CHANNEL_USERNAME = "@terabox_directlinks"
 PLAYER_BASE = "https://teraplayer979.github.io/stream-player/"
 
 # --------------- LOGGING ----------------
-# Set to DEBUG to see all internal details if needed, but INFO is good for general use
+# Set to INFO to keep logs clean on Railway
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -109,23 +109,17 @@ def handle_group_message(message):
     try:
         # 1. LOGGING: Check what the bot sees
         chat_username = message.chat.username or ""
-        text_preview = message.text[:20] if message.text else "No Text"
-        logger.info(f"Group Msg Detected | Chat: @{chat_username} | ID: {message.chat.id} | Text: {text_preview}...")
-
+        
         # 2. VALIDATION: Check if this is the correct source group
-        # Normalize both to lowercase and remove '@' for comparison
         clean_chat_username = chat_username.replace("@", "").lower()
         clean_target_group = SOURCE_GROUP_USERNAME.replace("@", "").lower()
 
         if clean_chat_username != clean_target_group:
-            # Silence this log if you are in many groups to avoid spam
-            logger.info(f"Ignored message from wrong group: {clean_chat_username}")
-            return
+            return # Silent return to avoid log spam from other groups
 
         # 3. LINK CHECK: Check for keywords
         url_text = message.text.strip()
         if "terabox" not in url_text and "1024tera" not in url_text:
-            logger.info("Message ignored: No Terabox keyword found.")
             return
 
         logger.info(f"✅ VALID LINK in Source Group! Processing: {url_text}")
@@ -142,7 +136,7 @@ def handle_group_message(message):
                     text=text,
                     reply_markup=markup
                 )
-                logger.info(f"🚀 SUCCESS: Auto-posted '{text.splitlines()[2]}' to {TARGET_CHANNEL_USERNAME}")
+                logger.info(f"🚀 SUCCESS: Auto-posted to {TARGET_CHANNEL_USERNAME}")
             except Exception as e:
                 logger.error(f"❌ FAILED to post to channel: {e}")
         else:
@@ -165,7 +159,6 @@ def handle_private_link(message):
     user_id = message.from_user.id
     try:
         member_status = bot.get_chat_member(FS_CHANNEL_USERNAME, user_id).status
-        # Valid statuses: creator, administrator, member
         if member_status not in ['creator', 'administrator', 'member']:
             fs_markup = types.InlineKeyboardMarkup()
             btn_join = types.InlineKeyboardButton("📢 Join Channel to Use", url=FS_CHANNEL_LINK)
@@ -200,7 +193,7 @@ def handle_private_link(message):
         bot.edit_message_text(
             chat_id=message.chat.id,
             message_id=status_msg.message_id,
-            text=f"❌ Failed to generate link or no file found.\n(API Key: {XAPIVERSE_KEY[:4]}***)"
+            text=f"❌ Failed to generate link or no file found."
         )
 
 
@@ -208,14 +201,24 @@ def handle_private_link(message):
 def run_bot():
     logger.info("Bot starting... Waiting for messages...")
     try:
+        # Clear any existing webhooks to ensure polling works
         bot.remove_webhook()
         time.sleep(1)
-    except:
-        pass
+    except Exception as e:
+        logger.warning(f"Webhook remove failed: {e}")
 
     while True:
         try:
             bot.infinity_polling(timeout=20, long_polling_timeout=10)
+        
+        except apihelper.ApiTelegramException as e:
+            if e.error_code == 409:
+                logger.error("❌ CONFLICT ERROR: Another bot instance is running! Waiting 15s...")
+                time.sleep(15) # Wait longer if conflict occurs
+            else:
+                logger.error(f"Telegram API Error: {e}")
+                time.sleep(5)
+        
         except Exception as e:
             logger.error(f"Polling crashed: {e}")
             time.sleep(5)
