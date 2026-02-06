@@ -174,17 +174,16 @@ def private_handler(message):
 def run_bot():
     logger.info("Starting bot...")
 
-    try:
-        bot.remove_webhook()
-        time.sleep(2)
-    except:
-        pass
-
     while True:
         try:
+            # Force remove webhook before polling
+            bot.remove_webhook()
+            time.sleep(2)
+
             bot.infinity_polling(skip_pending=True)
+
         except Exception as e:
-            logger.error(f"Crash: {e}")
+            logger.error(f"Restarting after error: {e}")
             time.sleep(5)
 
 
