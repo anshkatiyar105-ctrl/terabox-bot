@@ -28,9 +28,9 @@ if not BOT_TOKEN or not XAPIVERSE_KEY:
     logger.error("CRITICAL: Missing BOT_TOKEN or XAPIVERSE_KEY")
     exit(1)
 
-# --- FIX: Disable Threading Here ---
-# We disable threading in the constructor so that errors (like 409)
-# bubble up to our main loop instead of crashing a background thread.
+# --- FIX: Disable Threading in Constructor ---
+# We disable threading here. This works on all modern versions of pyTelegramBotAPI.
+# This prevents the 409 error from hiding inside a background thread.
 bot = telebot.TeleBot(BOT_TOKEN, threaded=False)
 
 # --- 2. CORE LOGIC (HANDLERS) ---
@@ -125,15 +125,16 @@ def private_chat(message):
     else:
         bot.edit_message_text("❌ No playable links found.", message.chat.id, status.message_id)
 
-# --- 3. PRODUCTION RUNNER (CONFLICT PROOF) ---
+# --- 3. PRODUCTION RUNNER ---
 
 def run_production_bot():
     print("--- STARTING BOT PROTECTION SEQUENCE ---")
     logger.info("Bot starting...")
 
-    # 1. Force Clear Webhook
+    # 1. Force Clear Webhook (Safe Version)
+    # We removed 'drop_pending_updates' because your library version didn't like it.
     try:
-        bot.remove_webhook(drop_pending_updates=True)
+        bot.remove_webhook()
         time.sleep(2) 
     except Exception as e:
         logger.warning(f"Webhook removal check: {e}")
@@ -143,8 +144,8 @@ def run_production_bot():
         try:
             logger.info("Connecting to Telegram...")
             
-            # non_stop=True: Keep polling even if errors occur (we catch them below)
-            # timeout=60: Long polling (efficient)
+            # threaded=False is ALREADY set in the constructor above.
+            # We don't need to pass it here.
             bot.polling(non_stop=True, interval=0, timeout=60)
             
         except apihelper.ApiTelegramException as e:
