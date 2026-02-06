@@ -10,6 +10,10 @@ from urllib.parse import quote_plus
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 XAPIVERSE_KEY = os.getenv("XAPIVERSE_KEY")
 
+# Force Subscribe Config
+CHANNEL_USERNAME = "@terabox_directlinks"
+CHANNEL_LINK = "https://t.me/terabox_directlinks"
+
 PLAYER_BASE = "https://teraplayer979.github.io/stream-player/"
 
 # --------------- LOGGING ----------------
@@ -35,6 +39,35 @@ def handle_link(message):
     if "terabox" not in url_text and "1024tera" not in url_text:
         return
 
+    # --- START FORCE SUBSCRIBE CHECK ---
+    user_id = message.from_user.id
+    try:
+        # Check membership status using the Channel Username
+        member_status = bot.get_chat_member(CHANNEL_USERNAME, user_id).status
+        
+        # Acceptable statuses: creator, administrator, member
+        if member_status not in ['creator', 'administrator', 'member']:
+            # Create Join Button Markup
+            fs_markup = types.InlineKeyboardMarkup()
+            btn_join = types.InlineKeyboardButton("📢 Join Channel to Use", url=CHANNEL_LINK)
+            fs_markup.add(btn_join)
+
+            bot.reply_to(
+                message, 
+                "⚠️ **Access Denied**\n\nYou must join our update channel to use this bot.",
+                parse_mode="Markdown",
+                reply_markup=fs_markup
+            )
+            return  # STOP processing here
+
+    except Exception as e:
+        # Logic to handle if bot is not admin in channel or API error
+        # We fail safely by logging and blocking to prevent bypass on error
+        logger.error(f"Force Subscribe Check Failed: {e}")
+        bot.reply_to(message, "⚠️ Error verifying subscription. Please report to admin.")
+        return
+    # --- END FORCE SUBSCRIBE CHECK ---
+
     status_msg = bot.reply_to(message, "⏳ Generating links...")
 
     try:
@@ -56,9 +89,8 @@ def handle_link(message):
             return
 
         json_data = response.json()
-        logger.info(json_data)  # Debug log
+        logger.info(json_data)
 
-        # ----------- SAFE EXTRACTION -----------
         file_list = json_data.get("list", [])
         if not file_list:
             bot.edit_message_text(
@@ -70,15 +102,14 @@ def handle_link(message):
 
         file_info = file_list[0]
 
-        # --- INTELLIGENT STREAM SELECTION ---
         fast_streams = file_info.get("fast_stream_url", {})
 
         watch_url = (
             fast_streams.get("720p")
             or fast_streams.get("480p")
             or fast_streams.get("360p")
-            or file_info.get("stream_url")  # fallback
-            or file_info.get("download_link")  # last fallback
+            or file_info.get("stream_url")
+            or file_info.get("download_link")
         )
 
         download_url = file_info.get("download_link")
@@ -92,11 +123,9 @@ def handle_link(message):
             )
             return
 
-        # Encode for player
         encoded_watch = quote_plus(watch_url)
         final_player_url = f"{PLAYER_BASE}?url={encoded_watch}"
 
-        # Create buttons
         markup = types.InlineKeyboardMarkup()
         markup.add(types.InlineKeyboardButton("▶️ Watch Online", url=final_player_url))
 
